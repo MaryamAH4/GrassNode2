@@ -82,7 +82,7 @@ async def main():
     user_id = os.environ.get("GRASS_USER_ID", "")
     active_proxies = ["socks5://127.0.0.1:1080"]
 
-    tasks = {asyncio.create_task(connect_to_wss(proxy, _user_id)): proxy for proxy in active_proxies}
+    tasks = [asyncio.create_task(connect_to_wss(proxy, user_id)): proxy for proxy in active_proxies]
 
     while True:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
