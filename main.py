@@ -26,8 +26,8 @@ async def connect_to_wss(socks5_proxy, user_id):
             ssl_context.verify_mode = ssl.CERT_NONE
             uri = "wss://proxy2.wynd.network:4444/"     # wss://proxy2.wynd.network:4650/
             server_hostname = "proxy.wynd.network"
-            proxy = Proxy.from_url(socks5_proxy)
-            async with proxy_connect(uri, proxy=proxy, ssl=ssl_context, extra_headers={
+            async with websockets.connect(uri, ssl=ssl_context, extra_headers={
+
                 "Origin": "chrome-extension://lkbnfiajjmbhnfledhphioinpickokdi",
                 "User-Agent": custom_headers["User-Agent"]
             }) as websocket:
