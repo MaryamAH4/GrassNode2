@@ -8,6 +8,7 @@ import ssl
 import json
 import time
 import uuid
+import os
 from loguru import logger
 from websockets_proxy import Proxy, proxy_connect
 
@@ -70,45 +71,27 @@ async def connect_to_wss(socks5_proxy, user_id):
 
         except Exception as e:
             logger.error(f"Error with proxy {socks5_proxy}: {str(e)}")
-            if any(error_msg in str(e) for error_msg in ["Host unreachable", "[SSL: WRONG_VERSION_NUMBER]", "invalid length of packed IP address string", "Empty connect reply", "Device creation limit exceeded", "sent 1011 (internal error) keepalive ping timeout; no close frame received"]):
-                logger.info(f"Removing error proxy from the list: {socks5_proxy}")
-                remove_proxy_from_list(socks5_proxy)
-                return None  # Signal to the main loop to replace this proxy
-            else:
-                continue  # Continue to try to reconnect or handle other errors
+            await asyncio.sleep(5)  # انتظام قبل إعادة المحاولة لعدم حظر السيرفر
+            continue
 
 async def main():
-    import os
     user_id = os.environ.get("GRASS_USER_ID", "")
     active_proxies = ["socks5://127.0.0.1:1080"]
 
-    tasks = [asyncio.create_task(connect_to_wss(proxy, user_id)): proxy for proxy in active_proxies]
+    # تم تصحيح بناء القاموس هنا وحذف النقطتين التي سببت الخطأ القديم
+    tasks = {asyncio.create_task(connect_to_wss(proxy, user_id)): proxy for proxy in active_proxies}
 
     while True:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
         for task in done:
-            if task.result() is None:
-                failed_proxy = tasks[task]
-                logger.info(f"Removing and replacing failed proxy: {failed_proxy}")
-                active_proxies.remove(failed_proxy)
-                new_proxy = random.choice(all_proxies)
-                active_proxies.append(new_proxy)
-                new_task = asyncio.create_task(connect_to_wss(new_proxy, _user_id))
-                tasks[new_task] = new_proxy  # Replace the task in the dictionary
-            tasks.pop(task)  # Remove the completed task whether it succeeded or failed
-        # Replenish the tasks if any have completed
-        for proxy in set(active_proxies) - set(tasks.values()):
-            new_task = asyncio.create_task(connect_to_wss(proxy, _user_id))
-            tasks[new_task] = proxy
-
-def remove_proxy_from_list(proxy):
-    with open("proxy.txt", "r+") as file:
-        lines = file.readlines()
-        file.seek(0)
-        for line in lines:
-            if line.strip() != proxy:
-                file.write(line)
-        file.truncate()
+            failed_proxy = tasks[task]
+            logger.info(f"إعادة الاتصال للبروكسي: {failed_proxy}")
+            tasks.pop(task)  # حذف المهمة المنتهية
+            
+            # إنشاء مهمة جديدة بديلة للحفاظ على استمرارية العمل بدون انهيار
+            new_task = asyncio.create_task(connect_to_wss(failed_proxy, user_id))
+            tasks[new_task] = failed_proxy
+        await asyncio.sleep(1)
 
 if __name__ == '__main__':
     asyncio.run(main())
