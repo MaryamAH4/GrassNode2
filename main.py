@@ -78,13 +78,10 @@ async def connect_to_wss(socks5_proxy, user_id):
                 continue  # Continue to try to reconnect or handle other errors
 
 async def main():
-    _user_id = ''   # Replace Your User ID HERE 
-    proxy_file = 'proxy.txt' # your Path to Proxy3.txt file 
-    # formate => socks5://username:pass@ip:port
-    with open(proxy_file, 'r') as file:
-        all_proxies = file.read().splitlines()
+    import os
+    user_id = os.environ.get("GRASS_USER_ID", "")
+    active_proxies = ["socks5://127.0.0.1:1080"]
 
-    active_proxies = random.sample(all_proxies, 100)  # Number of proxies to use
     tasks = {asyncio.create_task(connect_to_wss(proxy, _user_id)): proxy for proxy in active_proxies}
 
     while True:
