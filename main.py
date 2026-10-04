@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# @Author   :Solana0x
-# @File     :main.py
-# @Software :PyCharm
 import asyncio
 import random
 import ssl
@@ -9,41 +5,47 @@ import json
 import time
 import uuid
 import os
+import websockets
 from loguru import logger
-from websockets_proxy import Proxy, proxy_connect
 
-async def connect_to_wss(socks5_proxy, user_id):
-    device_id = str(uuid.uuid3(uuid.NAMESPACE_DNS, socks5_proxy))
-    logger.info(device_id)
+async def connect_to_wss(user_id):
+    # إنشاء معرف جهاز افتراضي ثابت وسريع للسيرفر
+    device_id = str(uuid.uuid4())
+    logger.info(f"Starting connection with Device ID: {device_id}")
+    
     while True:
         try:
-            await asyncio.sleep(random.uniform(0.1, 1.0))  # Reduced frequency
+            await asyncio.sleep(random.uniform(1.0, 3.0))
             custom_headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             }
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
-            uri = "wss://proxy2.wynd.network:4444/"     # wss://proxy2.wynd.network:4650/
-            server_hostname = "proxy.wynd.network"
+            
+            uri = "wss://proxy2.wynd.network:4444/"
+            
             async with websockets.connect(uri, ssl=ssl_context, extra_headers={
                 "Origin": "chrome-extension://lkbnfiajjmbhnfledhphioinpickokdi",
                 "User-Agent": custom_headers["User-Agent"]
             }) as websocket:
+                
                 async def send_ping():
                     while True:
                         send_message = json.dumps(
                             {"id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}})
-                        logger.debug(send_message)
+                        logger.debug(f"Sending PING: {send_message}")
                         await websocket.send(send_message)
-                        await asyncio.sleep(110)  # Increased interval to reduce bandwidth usage
+                        await asyncio.sleep(60)
 
                 send_ping_task = asyncio.create_task(send_ping())
+                
                 try:
                     while True:
                         response = await websocket.recv()
                         message = json.loads(response)
-                        logger.info(message)
+                        logger.info(f"Received from server: {message}")
+                        
                         if message.get("action") == "AUTH":
                             auth_response = {
                                 "id": message["id"],
@@ -58,39 +60,28 @@ async def connect_to_wss(socks5_proxy, user_id):
                                     "extension_id": "lkbnfiajjmbhnfledhphioinpickokdi"
                                 }
                             }
-                            logger.debug(auth_response)
+                            logger.debug(f"Sending AUTH Response: {auth_response}")
                             await websocket.send(json.dumps(auth_response))
 
                         elif message.get("action") == "PONG":
                             pong_response = {"id": message["id"], "origin_action": "PONG"}
-                            logger.debug(pong_response)
+                            logger.debug(f"Sending PONG Response: {pong_response}")
                             await websocket.send(json.dumps(pong_response))
                 finally:
                     send_ping_task.cancel()
 
         except Exception as e:
-            logger.error(f"Error with proxy {socks5_proxy}: {str(e)}")
-            await asyncio.sleep(5)  # انتظام قبل إعادة المحاولة لعدم حظر السيرفر
-            continue
+            logger.error(f"Connection error occurred: {str(e)}")
+            await asyncio.sleep(10)  # الانتظار قبل إعادة المحاولة لمنع حظر السيرفر
 
 async def main():
     user_id = os.environ.get("GRASS_USER_ID", "")
-    active_proxies = ["socks5://127.0.0.1:1080"]
-
-    # تم تصحيح بناء القاموس هنا وحذف النقطتين التي سببت الخطأ القديم
-    tasks = {asyncio.create_task(connect_to_wss(proxy, user_id)): proxy for proxy in active_proxies}
-
-    while True:
-        done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            failed_proxy = tasks[task]
-            logger.info(f"إعادة الاتصال للبروكسي: {failed_proxy}")
-            tasks.pop(task)  # حذف المهمة المنتهية
-            
-            # إنشاء مهمة جديدة بديلة للحفاظ على استمرارية العمل بدون انهيار
-            new_task = asyncio.create_task(connect_to_wss(failed_proxy, user_id))
-            tasks[new_task] = failed_proxy
-        await asyncio.sleep(1)
+    if not user_id:
+        logger.error("Error: GRASS_USER_ID environment variable is missing!")
+        return
+        
+    logger.info(f"Successfully loaded User ID: {user_id}")
+    await connect_to_wss(user_id)
 
 if __name__ == '__main__':
     asyncio.run(main())
